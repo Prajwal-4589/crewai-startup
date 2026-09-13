@@ -101,6 +101,13 @@ reliable responses.
    [`.streamlit/secrets.toml.example`](.streamlit/secrets.toml.example) with
    your real key(s) filled in. `app.py` copies those into the environment at
    startup, so no `.env` file is needed in the cloud.
+
+   Set **`LLM_PROFILES`** there too (a JSON array, see the example file) and
+   the whole priority chain — several keys for one free model, or a mix of
+   providers — is rebuilt on first run, so the **🔌 LLM & Model** tab comes
+   up already populated instead of empty. It is read only when
+   `llm_profiles.json` is absent, so edits you make in the UI are never
+   overwritten.
 4. Deploy. Dependencies come from `requirements.txt`.
 
 **Caveats on a hosted deployment:**

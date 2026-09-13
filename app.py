@@ -398,8 +398,44 @@ def test_llm(model: str, base_url: str, api_key: str) -> tuple[bool, str]:
 # the same free model, or mix providers, for resilience.
 # --------------------------------------------------------------------------
 
+def _profiles_from_env() -> list[dict]:
+    """Seed the whole fallback chain from an LLM_PROFILES env var / secret.
+
+    Hosted deploys (Streamlit Cloud) start with no llm_profiles.json, since
+    that file holds API keys and is gitignored. Setting LLM_PROFILES to a
+    JSON array of {label, model, base_url, api_key, temperature} objects
+    recreates the full chain on first run. Ignored when the file exists.
+    """
+    raw = os.environ.get("LLM_PROFILES", "").strip()
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(parsed, list):
+        return []
+    out = []
+    for item in parsed:
+        if not isinstance(item, dict) or not item.get("model"):
+            continue
+        out.append({
+            "id": item.get("id") or uuid.uuid4().hex[:8],
+            "label": item.get("label") or "Profile",
+            "model": item["model"],
+            "base_url": item.get("base_url", ""),
+            "api_key": item.get("api_key", ""),
+            "temperature": item.get("temperature", 0.4),
+        })
+    return out
+
+
 def load_profiles() -> list[dict]:
     if not PROFILES_PATH.exists():
+        seeded = _profiles_from_env()
+        if seeded:
+            save_profiles(seeded)
+            return seeded
         cfg = current_llm_config()
         seed = (
             [{
