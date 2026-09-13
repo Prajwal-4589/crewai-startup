@@ -97,6 +97,13 @@ reliable responses.
 
 1. Go to [share.streamlit.io](https://share.streamlit.io) and sign in with GitHub.
 2. **New app** → pick this repo, branch `main`, main file `app.py`.
+   Under **Advanced settings**, set **Python 3.13**. This is not optional:
+   CrewAI declares `requires-python <3.14`, and on Python 3.14 its chromadb
+   dependency dies on import with
+   `unable to infer type for attribute "chroma_server_nofile"`. Pinning
+   pydantic does not help — the break is in 3.14 itself. Community Cloud
+   defaults to the newest Python, and **the version cannot be changed after
+   deployment** — you have to delete the app and redeploy to change it.
 3. Open **Advanced settings → Secrets** and paste the contents of
    [`.streamlit/secrets.toml.example`](.streamlit/secrets.toml.example) with
    your real key(s) filled in. `app.py` copies those into the environment at

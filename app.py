@@ -18,6 +18,30 @@ import streamlit.components.v1 as components
 import yaml
 from dotenv import load_dotenv, set_key
 
+# --------------------------------------------------------------------------
+# Python version guard.
+#
+# CrewAI declares requires-python <3.14, and chromadb (pulled in by CrewAI)
+# still builds its Settings through pydantic's v1 compatibility shim, which
+# cannot infer field types under Python 3.14. The result is a cryptic
+#   pydantic.v1.errors.ConfigError: unable to infer type for attribute
+#   "chroma_server_nofile"
+# raised deep inside an import. Downgrading pydantic does NOT help - the
+# break is in 3.14 itself. Fail loudly and early instead.
+# --------------------------------------------------------------------------
+if sys.version_info >= (3, 14):
+    st.error(
+        f"This app needs Python 3.13 or older - it is running on "
+        f"{sys.version_info.major}.{sys.version_info.minor}.\n\n"
+        "CrewAI does not support Python 3.14 (it declares requires-python "
+        "<3.14), and its chromadb dependency crashes on import with "
+        '`unable to infer type for attribute \"chroma_server_nofile\"`.'
+        "\n\nOn Streamlit Community Cloud the Python version cannot be "
+        "changed after deployment: delete the app and redeploy it, choosing "
+        "**Python 3.13** under *Advanced settings*."
+    )
+    st.stop()
+
 ROOT = Path(__file__).resolve().parent
 ENV_PATH = ROOT / ".env"
 AGENTS_YAML = ROOT / "src" / "startup_crew" / "config" / "agents.yaml"
