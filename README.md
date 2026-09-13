@@ -93,6 +93,18 @@ reliable responses.
   conversation memory for the current chat; `context: [task_key, ...]` wires
   one task's output into another's input.
 
+## Check the setup
+
+```bash
+.venv/Scripts/python check_setup.py            # Linux/macOS: .venv/bin/python
+.venv/Scripts/python check_setup.py --quick    # skip the live crew run
+```
+
+Checks the Python version, every dependency, where the config is coming
+from, each API key with a real call, and finally runs a one-agent crew end
+to end. Exits 0 when everything passes. Run it locally, or from the hosted
+app's terminal, to tell a broken key apart from a broken install.
+
 ## Deploy to Streamlit Community Cloud
 
 1. Go to [share.streamlit.io](https://share.streamlit.io) and sign in with GitHub.
