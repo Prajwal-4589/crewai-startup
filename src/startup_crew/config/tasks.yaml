@@ -1,0 +1,52 @@
+# =============================================================================
+# STARTUP CREW — TASK PIPELINE
+# =============================================================================
+# No `agent:` is set on these tasks on purpose: the crew runs in hierarchical
+# mode, so chief_of_staff (the manager) decides at runtime which specialist(s)
+# are actually relevant to {objective} and delegates to them directly — you
+# don't need to predict which roles matter for every possible question.
+# =============================================================================
+
+specialist_input_task:
+  description: >
+    The founder's message is:
+
+      {objective}
+
+    Conversation history in this project so far (may be empty — treat this as
+    memory of what's already been discussed and decided; don't repeat prior
+    analysis, build on it):
+
+      {history}
+
+    Determine which specialist(s) on the team — market research, product,
+    growth/marketing, sales/BD, finance/operations, customer insights — are
+    actually relevant to this specific objective. Delegate a narrow, concrete
+    question to each relevant specialist (skip irrelevant ones rather than
+    asking everyone something generic). Push back and re-delegate if a
+    specialist's answer is vague, generic, or unsupported. Collect their
+    concrete input.
+  expected_output: >
+    A structured brief with one section per specialist actually consulted,
+    each section containing their concrete findings/recommendations and any
+    explicit assumptions they flagged. Omit sections for specialists who
+    weren't relevant to this objective.
+
+final_recommendation_task:
+  description: >
+    Using the specialist brief you just assembled, synthesize a single,
+    coherent, decision-ready recommendation for the founder on:
+
+      {objective}
+
+    Resolve any conflicts between specialists explicitly (state the tradeoff
+    and your call). Cut anything that doesn't change what the founder should
+    actually do next.
+  expected_output: >
+    A concise recommendation with: (1) the bottom-line recommendation in 2-3
+    sentences, (2) key supporting reasoning pulled from the specialist brief,
+    (3) explicit tradeoffs or risks and how you resolved them, (4) a
+    numbered list of concrete next actions with an owner (which
+    role/specialist) suggested for each.
+  context:
+    - specialist_input_task

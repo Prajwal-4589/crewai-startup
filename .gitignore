@@ -1,0 +1,14 @@
+# Secrets — never commit
+.env
+llm_profiles.json
+.streamlit/secrets.toml
+
+# Local runtime data
+projects/
+output/
+*.log
+
+# Python
+.venv/
+__pycache__/
+*.pyc
