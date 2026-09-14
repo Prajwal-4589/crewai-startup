@@ -184,7 +184,12 @@ def split_model(model: str) -> tuple[str, str]:
     return "", model
 
 
-def _post(url: str, key: str, payload: dict, timeout: int = 45):
+# Nemotron-class reasoning models think before they answer, so even a
+# 5-token reply can take a couple of minutes on a busy endpoint.
+DEFAULT_TIMEOUT = 150
+
+
+def _post(url: str, key: str, payload: dict, timeout: int = DEFAULT_TIMEOUT):
     req = urllib.request.Request(
         url,
         data=json.dumps(payload).encode(),
@@ -196,8 +201,8 @@ def _post(url: str, key: str, payload: dict, timeout: int = 45):
         return resp.status, json.loads(resp.read().decode())
 
 
-def check_keys(profiles: list[dict]) -> int:
-    """Send a 1-token completion through each profile. Returns live count."""
+def check_keys(profiles: list[dict], timeout: int = DEFAULT_TIMEOUT) -> int:
+    """Send a tiny completion through each profile. Returns live count."""
     live = 0
     for i, p in enumerate(profiles, 1):
         label = p.get("label") or f"profile {i}"
@@ -214,7 +219,8 @@ def check_keys(profiles: list[dict]) -> int:
                 f"{base}/chat/completions", key,
                 {"model": api_model,
                  "messages": [{"role": "user", "content": "Reply with the word: ok"}],
-                 "max_tokens": 5},
+                 "max_tokens": 16},
+                timeout=timeout,
             )
             took = time.time() - started
             text = ""
@@ -248,6 +254,16 @@ def check_keys(profiles: list[dict]) -> int:
             elif exc.code == 402:
                 hint = "\nOut of credits for this key."
             say(FAIL, f"{label}: HTTP {exc.code}", detail + hint)
+        except (TimeoutError, OSError) as exc:  # includes socket.timeout
+            took = time.time() - started
+            say(FAIL, f"{label}: timed out after {took:.0f}s",
+                f"{type(exc).__name__}: {str(exc)[:160]}\n"
+                "The endpoint accepted the request but did not finish in time.\n"
+                "Nemotron 3 Ultra is a reasoning model — it thinks before it\n"
+                "answers, so it can be slow when the endpoint is busy.\n"
+                f"Try:  python check_setup.py --timeout {max(300, timeout * 2)}\n"
+                "If it still times out, the model is too slow to be practical\n"
+                "here — pick a smaller one in the LLM & Model tab.")
         except Exception as exc:  # noqa: BLE001
             say(FAIL, f"{label}: {type(exc).__name__}", str(exc)[:300])
     return live
@@ -309,6 +325,10 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Startup Crew setup check")
     ap.add_argument("--quick", action="store_true",
                     help="skip the live crew run")
+    ap.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT,
+                    help=f"seconds to wait for each key's reply "
+                         f"(default {DEFAULT_TIMEOUT}; raise it for slow "
+                         "reasoning models)")
     args = ap.parse_args()
 
     print("=" * 70)
@@ -331,7 +351,10 @@ def main() -> int:
         print(f"        {i}. {p.get('label','?')}  {p.get('model','?')}  {masked}")
 
     section("4. API keys (live calls)")
-    live = check_keys(profiles) if profiles else 0
+    if profiles:
+        say(INFO, f"waiting up to {args.timeout}s per key "
+                  "(reasoning models are slow — this is not a hang)")
+    live = check_keys(profiles, args.timeout) if profiles else 0
     if profiles:
         say(INFO, f"{live} of {len(profiles)} key(s) answered")
 
