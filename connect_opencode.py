@@ -29,6 +29,9 @@ ENV_PATH = ROOT / ".env"
 
 # provider name in OpenCode's auth.json -> (litellm prefix, api base)
 PROVIDERS = {
+    # OpenCode Zen — OpenCode's own gateway. This is what "provider: opencode"
+    # in OpenCode means. OpenAI-compatible, so litellm talks to it as openai/*.
+    "opencode":   ("openai",     "https://opencode.ai/zen/v1"),
     "nvidia":     ("nvidia_nim", "https://integrate.api.nvidia.com/v1"),
     "openrouter": ("openrouter", "https://openrouter.ai/api/v1"),
     "openai":     ("",           "https://api.openai.com/v1"),
@@ -66,7 +69,7 @@ def find_auth() -> Path:
     raise AssertionError  # unreachable
 
 
-def read_credentials(auth_file: Path) -> tuple[str, str, str, str]:
+def read_credentials(auth_file: Path, want: str | None = None) -> tuple[str, str, str, str]:
     try:
         data = json.loads(auth_file.read_text(encoding="utf-8"))
     except Exception as exc:  # noqa: BLE001
@@ -85,6 +88,12 @@ def read_credentials(auth_file: Path) -> tuple[str, str, str, str]:
         die("no reusable API keys in OpenCode's auth.json.\n"
             "  Subscription/OAuth logins (Claude Pro, ChatGPT) only work "
             "inside OpenCode itself.")
+    if want:
+        match = [u for u in usable if u[0] == want]
+        if not match:
+            die(f"provider {want!r} has no API key in auth.json. "
+                f"Available: {', '.join(n for n, _ in usable)}")
+        usable = match + [u for u in usable if u[0] != want]
     name, key = usable[0]
     if len(usable) > 1:
         print(f"  found {len(usable)} providers; using '{name}'. "
@@ -194,6 +203,67 @@ def write_profile(profile: dict, dry: bool) -> None:
         print(f"  wrote {ENV_PATH.name}")
 
 
+# Key prefix -> the provider it actually belongs to. Used by --migrate to
+# spot a profile whose key was swapped without updating model/base_url.
+KEY_OWNER = {
+    "nvapi-":    ("nvidia_nim", "https://integrate.api.nvidia.com/v1"),
+    "sk-or-v1-": ("openrouter", "https://openrouter.ai/api/v1"),
+}
+
+
+def migrate(base: str, model_id: str, prefix: str, dry: bool) -> int:
+    """Repoint profiles whose API key no longer matches their base_url."""
+    if not PROFILES.exists():
+        die(f"{PROFILES.name} not found — nothing to migrate.")
+    try:
+        profiles = json.loads(PROFILES.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        die(f"{PROFILES.name} is not valid JSON: {exc}")
+    if not isinstance(profiles, list) or not profiles:
+        die(f"{PROFILES.name} has no profiles.")
+
+    changed, checked = [], 0
+    for p in profiles:
+        key = p.get("api_key", "")
+        owner = next((v for k, v in KEY_OWNER.items() if key.startswith(k)), None)
+        if not owner:
+            continue
+        want_prefix, want_base = owner
+        mismatch = want_base.split("//")[1].split("/")[0] not in (p.get("base_url") or "")
+        if not mismatch:
+            continue
+        old_model, old_base = p.get("model", ""), p.get("base_url", "")
+        # Only re-verify keys for the provider we just discovered models on.
+        if want_base == base:
+            checked += 1
+            print(f"\n  checking ...{key[-6:]} against {model_id}")
+            reply = verify(base, key, model_id)
+            print(f"    replied {reply!r}")
+            p["model"] = f"{want_prefix}/{model_id}" if want_prefix else model_id
+        else:
+            p["model"] = old_model
+        p["base_url"] = want_base
+        p["label"] = f"{want_base.split('//')[1].split('/')[0]} — {model_id}"
+        changed.append((old_model, old_base, p))
+
+    if not changed:
+        print("\n  Nothing to migrate — every profile's key already matches "
+              "its base_url.")
+        return 0
+
+    print(f"\n  {len(changed)} profile(s) repointed "
+          f"({checked} verified with a live call):")
+    for old_model, old_base, p in changed:
+        print(f"    was: {old_model}  @ {old_base}")
+        print(f"    now: {p['model']}  @ {p['base_url']}")
+    if dry:
+        print("\n  --dry-run: nothing written.")
+        return 0
+    PROFILES.write_text(json.dumps(profiles, indent=2), encoding="utf-8")
+    print(f"\n  wrote {PROFILES.name}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -201,15 +271,33 @@ def main() -> int:
     ap.add_argument("--model", help="force a specific model id")
     ap.add_argument("--list", action="store_true", help="list models and exit")
     ap.add_argument("--dry-run", action="store_true", help="write nothing")
+    ap.add_argument("--provider", help="use this provider from auth.json "
+                                       "instead of the first usable one")
+    ap.add_argument("--key", help="use this API key directly (skips auth.json)")
+    ap.add_argument("--base", help="API base url, with --key "
+                                   "(e.g. https://opencode.ai/zen/v1)")
+    ap.add_argument("--migrate", action="store_true",
+                    help="fix existing profiles whose api_key was swapped for a "
+                         "different provider's (e.g. nvapi-... left on an "
+                         "openrouter base_url) — repoints and re-verifies each")
+    ap.add_argument("--prefix", default="openai",
+                    help="litellm provider prefix for --key/--base "
+                         "(default: openai)")
     args = ap.parse_args()
 
     print("=" * 68)
     print("Connect Startup Crew to OpenCode's provider")
     print("=" * 68)
 
-    auth_file = Path(args.auth) if args.auth else find_auth()
-    print(f"  auth file: {auth_file}")
-    name, key, prefix, base = read_credentials(auth_file)
+    if args.key:
+        if not args.base:
+            die("--key also needs --base (e.g. https://opencode.ai/zen/v1).")
+        name, key, prefix, base = "manual", args.key, args.prefix, args.base
+        print("  source   : --key/--base (auth.json not used)")
+    else:
+        auth_file = Path(args.auth) if args.auth else find_auth()
+        print(f"  auth file: {auth_file}")
+        name, key, prefix, base = read_credentials(auth_file, args.provider)
     print(f"  provider : {name}  ({base})")
     print(f"  key      : ...{key[-6:]}")
 
@@ -229,6 +317,9 @@ def main() -> int:
 
     reply = verify(base, key, model_id)
     print(f"  verified : model replied {reply!r}")
+
+    if args.migrate:
+        return migrate(base, model_id, prefix, args.dry_run)
 
     profile = {
         "id": "opencode",            # stable, so re-running replaces in place

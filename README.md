@@ -100,12 +100,22 @@ reliable responses.
 .venv/Scripts/python connect_opencode.py --list     # see what the key can serve
 ```
 
+```bash
+.venv/Scripts/python connect_opencode.py --migrate   # swapped your keys already?
+```
+
 Reads OpenCode's `auth.json`, asks the provider which models it will actually
 serve you, verifies one with a live call, and writes it into
 `llm_profiles.json` as the crew's **first-choice** profile. Your existing
 keys stay on as fallback. Re-running replaces that profile rather than
 stacking duplicates. OAuth/subscription logins (Claude Pro, ChatGPT) are
 skipped — those only work inside OpenCode itself.
+
+`--migrate` handles a different case: you pasted a new provider's key over an
+old profile but left its `model` and `base_url` pointing at the old provider.
+An `nvapi-...` key on an OpenRouter base_url is a guaranteed 401, and the
+error message won't say why. It repoints each mismatched profile, re-verifies
+it with a live call, and is a no-op once everything lines up.
 
 ## Check the setup
 
