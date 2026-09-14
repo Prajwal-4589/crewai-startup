@@ -35,6 +35,24 @@ def get_llm() -> LLM:
     )
     if base_url:
         kwargs["base_url"] = base_url
+
+    # litellm also looks for a provider-specific env var, and falls back to it
+    # when api_key is None. Export it so a provider that ignores the explicit
+    # kwarg still authenticates instead of failing with a bare
+    # "Missing Authentication header".
+    _provider_env = {
+        "nvidia_nim": "NVIDIA_NIM_API_KEY",
+        "openrouter": "OPENROUTER_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "anthropic": "ANTHROPIC_API_KEY",
+        "groq": "GROQ_API_KEY",
+        "mistral": "MISTRAL_API_KEY",
+        "deepseek": "DEEPSEEK_API_KEY",
+    }
+    _prefix = kwargs["model"].split("/", 1)[0]
+    if kwargs.get("api_key") and _prefix in _provider_env:
+        os.environ[_provider_env[_prefix]] = kwargs["api_key"]
+
     return LLM(**kwargs)
 
 

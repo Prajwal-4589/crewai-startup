@@ -1,5 +1,7 @@
 # Secrets — never commit
 .env
+.env.*
+*.backup
 llm_profiles.json
 .streamlit/secrets.toml
 

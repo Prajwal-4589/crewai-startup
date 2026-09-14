@@ -155,6 +155,25 @@ def verify(base: str, key: str, model_id: str) -> str:
     raise AssertionError  # unreachable
 
 
+def write_env(updates: dict) -> None:
+    """Rewrite the given keys in .env, preserving everything else."""
+    if not ENV_PATH.exists():
+        return
+    lines, seen = [], set()
+    for raw in ENV_PATH.read_text(encoding="utf-8").splitlines():
+        k = raw.split("=", 1)[0].strip()
+        if k in updates:
+            lines.append(f"{k}={updates[k]}")
+            seen.add(k)
+        else:
+            lines.append(raw)
+    for k, v in updates.items():
+        if k not in seen:
+            lines.append(f"{k}={v}")
+    ENV_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"  wrote {ENV_PATH.name}")
+
+
 def write_profile(profile: dict, dry: bool) -> None:
     existing = []
     if PROFILES.exists():
@@ -180,27 +199,12 @@ def write_profile(profile: dict, dry: bool) -> None:
     PROFILES.write_text(json.dumps(merged, indent=2), encoding="utf-8")
     print(f"\n  wrote {PROFILES.name}")
 
-    # Keep .env aligned so the CLI entry point uses the same model.
-    if ENV_PATH.exists():
-        lines, seen = [], set()
-        updates = {
-            "LLM_PROVIDER_LABEL": profile["label"],
-            "LLM_MODEL": profile["model"],
-            "LLM_API_KEY": profile["api_key"],
-            "LLM_BASE_URL": profile["base_url"],
-        }
-        for raw in ENV_PATH.read_text(encoding="utf-8").splitlines():
-            k = raw.split("=", 1)[0].strip()
-            if k in updates:
-                lines.append(f"{k}={updates[k]}")
-                seen.add(k)
-            else:
-                lines.append(raw)
-        for k, v in updates.items():
-            if k not in seen:
-                lines.append(f"{k}={v}")
-        ENV_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        print(f"  wrote {ENV_PATH.name}")
+    write_env({
+        "LLM_PROVIDER_LABEL": profile["label"],
+        "LLM_MODEL": profile["model"],
+        "LLM_API_KEY": profile["api_key"],
+        "LLM_BASE_URL": profile["base_url"],
+    })
 
 
 # Key prefix -> the provider it actually belongs to. Used by --migrate to
@@ -261,6 +265,18 @@ def migrate(base: str, model_id: str, prefix: str, dry: bool) -> int:
         return 0
     PROFILES.write_text(json.dumps(profiles, indent=2), encoding="utf-8")
     print(f"\n  wrote {PROFILES.name}")
+
+    # .env is a SEPARATE copy of the active provider, used by the CLI entry
+    # point and as the seed when llm_profiles.json is absent. Leaving it on the
+    # old provider is how you end up with NVIDIA profiles on disk but an
+    # OpenRouter key in the environment.
+    first = profiles[0]
+    write_env({
+        "LLM_PROVIDER_LABEL": first.get("label", ""),
+        "LLM_MODEL": first.get("model", ""),
+        "LLM_API_KEY": first.get("api_key", ""),
+        "LLM_BASE_URL": first.get("base_url", ""),
+    })
     return 0
 
 
