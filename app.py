@@ -411,8 +411,10 @@ def test_llm(model: str, base_url: str, api_key: str) -> tuple[bool, str]:
         kwargs = dict(
             model=model,
             messages=[{"role": "user", "content": "Reply with exactly: ok"}],
-            max_tokens=5,
-            timeout=75,
+            max_tokens=16,
+            # Same reasoning-model problem as in crew.py's get_llm(): a short
+            # timeout makes a working model look broken.
+            timeout=float(os.environ.get("LLM_TIMEOUT", "900")),
         )
         if base_url:
             kwargs["api_base"] = base_url

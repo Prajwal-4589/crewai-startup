@@ -184,9 +184,11 @@ def split_model(model: str) -> tuple[str, str]:
     return "", model
 
 
-# Nemotron-class reasoning models think before they answer, so even a
-# 5-token reply can take a couple of minutes on a busy endpoint.
-DEFAULT_TIMEOUT = 150
+# Nemotron-class reasoning models emit a long chain of thinking tokens before
+# any answer, so even a 16-token reply can run for many minutes on a busy
+# endpoint. Matches the app's own LLM_TIMEOUT default so the check and the
+# crew give up at the same point, never at different ones.
+DEFAULT_TIMEOUT = int(os.environ.get("LLM_TIMEOUT", "900"))
 
 
 def _post(url: str, key: str, payload: dict, timeout: int = DEFAULT_TIMEOUT):
@@ -261,9 +263,10 @@ def check_keys(profiles: list[dict], timeout: int = DEFAULT_TIMEOUT) -> int:
                 "The endpoint accepted the request but did not finish in time.\n"
                 "Nemotron 3 Ultra is a reasoning model — it thinks before it\n"
                 "answers, so it can be slow when the endpoint is busy.\n"
-                f"Try:  python check_setup.py --timeout {max(300, timeout * 2)}\n"
-                "If it still times out, the model is too slow to be practical\n"
-                "here — pick a smaller one in the LLM & Model tab.")
+                f"Try:  python check_setup.py --timeout {max(1800, timeout * 2)}\n"
+                "If it still times out the endpoint is likely stuck, not slow —\n"
+                "check status at status.nvidia.com or try a smaller model via\n"
+                "connect_opencode.py --list.")
         except Exception as exc:  # noqa: BLE001
             say(FAIL, f"{label}: {type(exc).__name__}", str(exc)[:300])
     return live

@@ -117,6 +117,22 @@ An `nvapi-...` key on an OpenRouter base_url is a guaranteed 401, and the
 error message won't say why. It repoints each mismatched profile, re-verifies
 it with a live call, and is a no-op once everything lines up.
 
+## Slow models
+
+Reasoning models (Nemotron 3 Ultra and similar) emit a long chain of thinking
+tokens before any answer, so one agent call can run for minutes and a full
+crew run much longer. Every timeout in this project therefore defaults to
+**900 seconds** and is controlled by one environment variable:
+
+```bash
+LLM_TIMEOUT=1800        # in .env, to wait even longer
+```
+
+It governs `crew.py`'s per-agent calls, the **Test** button in the LLM &
+Model tab, and `check_setup.py`. A short timeout does not fail fast here — it
+aborts runs that were working and burns the whole fallback chain on a healthy
+model.
+
 ## Check the setup
 
 ```bash

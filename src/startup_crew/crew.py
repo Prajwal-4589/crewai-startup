@@ -26,10 +26,12 @@ def get_llm() -> LLM:
         model=os.environ["LLM_MODEL"],
         api_key=os.environ.get("LLM_API_KEY") or None,
         temperature=float(os.environ.get("LLM_TEMPERATURE", "0.4")),
-        # Without an explicit timeout, a stalled/hung connection to a flaky
-        # free-tier endpoint can block a run indefinitely instead of failing
-        # and letting CrewAI's own retry logic kick in.
-        timeout=120,
+        # Reasoning models (Nemotron 3 Ultra and friends) emit a long chain of
+        # thinking tokens before any answer, so a single agent call can run for
+        # many minutes. A short timeout here does not "fail fast" — it aborts
+        # good runs and burns the whole fallback chain on a model that was
+        # working. Generous by default; override with LLM_TIMEOUT (seconds).
+        timeout=float(os.environ.get("LLM_TIMEOUT", "900")),
     )
     if base_url:
         kwargs["base_url"] = base_url
