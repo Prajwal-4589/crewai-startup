@@ -84,6 +84,16 @@ PROVIDER_PRESETS = {
         model_editable=True,
         base_url_editable=False,
     ),
+    "NVIDIA NIM": dict(
+        model="nvidia_nim/nvidia/nemotron-3-ultra-550b-a55b",
+        base_url="https://integrate.api.nvidia.com/v1",
+        key_label="NVIDIA API key (nvapi-...)",
+        key_help="build.nvidia.com. If you use OpenCode, run connect_opencode.py "
+                 "to import the key and model it already uses.",
+        needs_key=True,
+        model_editable=True,
+        base_url_editable=False,
+    ),
     "OpenAI": dict(
         model="gpt-4o-mini",
         base_url="",

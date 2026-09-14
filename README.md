@@ -93,6 +93,20 @@ reliable responses.
   conversation memory for the current chat; `context: [task_key, ...]` wires
   one task's output into another's input.
 
+## Already using OpenCode?
+
+```bash
+.venv/Scripts/python connect_opencode.py            # import provider + model
+.venv/Scripts/python connect_opencode.py --list     # see what the key can serve
+```
+
+Reads OpenCode's `auth.json`, asks the provider which models it will actually
+serve you, verifies one with a live call, and writes it into
+`llm_profiles.json` as the crew's **first-choice** profile. Your existing
+keys stay on as fallback. Re-running replaces that profile rather than
+stacking duplicates. OAuth/subscription logins (Claude Pro, ChatGPT) are
+skipped — those only work inside OpenCode itself.
+
 ## Check the setup
 
 ```bash
