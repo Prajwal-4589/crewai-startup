@@ -155,6 +155,35 @@ def load_config() -> list[dict]:
 # ------------------------------------------------------------------ 4. keys
 
 
+# litellm model strings are "<provider>/<the provider's own model id>".
+# A raw HTTP call to the provider must send only the second part — sending
+# the whole thing is what makes NVIDIA answer "404 page not found".
+LITELLM_PREFIXES = {
+    "openrouter", "nvidia_nim", "openai", "anthropic", "groq", "mistral",
+    "deepseek", "together_ai", "fireworks_ai", "azure", "vertex_ai",
+    "gemini", "cohere", "perplexity", "xai", "ollama", "bedrock",
+}
+
+# litellm reads the key from a provider-specific env var as well.
+PROVIDER_ENV = {
+    "openrouter": "OPENROUTER_API_KEY",
+    "nvidia_nim": "NVIDIA_NIM_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "mistral": "MISTRAL_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY",
+}
+
+
+def split_model(model: str) -> tuple[str, str]:
+    """('nvidia_nim/nvidia/nemotron-x') -> ('nvidia_nim', 'nvidia/nemotron-x')"""
+    head, sep, rest = model.partition("/")
+    if sep and head in LITELLM_PREFIXES:
+        return head, rest
+    return "", model
+
+
 def _post(url: str, key: str, payload: dict, timeout: int = 45):
     req = urllib.request.Request(
         url,
@@ -175,8 +204,7 @@ def check_keys(profiles: list[dict]) -> int:
         key = p.get("api_key", "")
         base = (p.get("base_url") or "https://openrouter.ai/api/v1").rstrip("/")
         model = p.get("model", "")
-        # Strip the litellm provider prefix for a raw HTTP call.
-        api_model = model.split("/", 1)[1] if model.startswith("openrouter/") else model
+        _prov, api_model = split_model(model)
         if not key:
             say(WARN, f"{label}: no API key set", "Skipped.")
             continue
@@ -211,6 +239,10 @@ def check_keys(profiles: list[dict]) -> int:
                              "to the next key, so this is not a setup problem.")
                 continue
             hint = ""
+            if exc.code == 404:
+                hint = (f"\nThe endpoint did not recognise model "
+                        f"{api_model!r} at {base}.\n"
+                        "Check the model id against what this provider serves.")
             if exc.code == 401:
                 hint = "\nKey is invalid or revoked — create a new one at openrouter.ai/keys."
             elif exc.code == 402:
@@ -233,8 +265,9 @@ def check_crew(profiles: list[dict]) -> bool:
     os.environ["LLM_API_KEY"] = p.get("api_key", "")
     os.environ["LLM_BASE_URL"] = p.get("base_url", "")
     # litellm reads provider keys from the conventional env var too.
-    if model.startswith("openrouter/"):
-        os.environ["OPENROUTER_API_KEY"] = p.get("api_key", "")
+    prov, _api_model = split_model(model)
+    if prov in PROVIDER_ENV:
+        os.environ[PROVIDER_ENV[prov]] = p.get("api_key", "")
 
     say(INFO, "running a real 1-agent crew (may take 30-90s on the free tier)")
     try:
